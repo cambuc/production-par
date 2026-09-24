@@ -71,9 +71,35 @@ input[type='file']::file-selector-button {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.downloads .button {
+.download-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 8px 0;
+}
+
+.download-row + .download-row {
+  border-top: 1px solid var(--border);
+}
+
+.download-label {
+  font-weight: 500;
+}
+
+.download-formats {
+  display: flex;
+  gap: 8px;
+}
+
+.download-formats .button {
+  min-width: 64px;
   text-align: center;
 }
 

@@ -2,6 +2,8 @@ import { useState, type ChangeEvent } from 'react'
 import './App.css'
 import parWorksheetTemplate from '../templates/par-worksheet.csv?raw'
 import prepListTemplate from '../templates/production-prep-list.csv?raw'
+import parWorksheetXlsxUrl from '../templates/par-worksheet.xlsx?url'
+import prepListXlsxUrl from '../templates/production-prep-list.xlsx?url'
 import Papa from 'papaparse'
 
 const MVT_HEADERS: Record<number, string> = {
@@ -16,6 +18,19 @@ const MVT_HEADERS: Record<number, string> = {
   12: 'Week mvt',
 };
 
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+// A value written into a template, by zero-based row/column. The .csv and
+// .xlsx templates share the same layout, so one edit applies to both.
+type CellEdit = { row: number; col: number; value: number };
+
+type OutputFile = {
+  label: string;
+  fileName: string;
+  csvUrl: string;
+  xlsxUrl: string;
+};
+
 function parseCsv(content: string): string[][] {
   return Papa.parse<string[]>(content.trim()).data;
 }
@@ -27,18 +42,45 @@ function hasMovementHeaders(content: string): boolean {
   );
 }
 
+function applyEdits(rows: string[][], edits: CellEdit[]) {
+  for (const { row, col, value } of edits) rows[row][col] = String(value);
+}
+
+function buildCsv(rows: string[][]): Blob {
+  return new Blob([Papa.unparse(rows)], { type: 'text/csv' });
+}
+
+async function buildXlsx(templateUrl: string, edits: CellEdit[]): Promise<Blob> {
+  // loaded on demand: ExcelJS is large and only needed once pars are generated
+  const { default: ExcelJS } = await import('exceljs');
+  const workbook = new ExcelJS.Workbook();
+  const template = await fetch(templateUrl).then(res => res.arrayBuffer());
+  await workbook.xlsx.load(template);
+
+  const sheet = workbook.worksheets[0];
+  for (const { row, col, value } of edits) {
+    sheet.getCell(row + 1, col + 1).value = value;
+  }
+
+  return new Blob([await workbook.xlsx.writeBuffer()], { type: XLSX_TYPE });
+}
+
+function revokeOutputs(outputs: OutputFile[] | null) {
+  for (const output of outputs ?? []) {
+    URL.revokeObjectURL(output.csvUrl);
+    URL.revokeObjectURL(output.xlsxUrl);
+  }
+}
+
 function App() {
   const [movementReportContent, setMovementReport] = useState('');
   const [errorStatus, setError] = useState(0);
   const [headerWarning, setHeaderWarning] = useState(false);
-  const [pwDownload, setPWDownload] = useState<string | null>(null);
-  const [plDownload, setPLDownload] = useState<string | null>(null);
+  const [outputs, setOutputs] = useState<OutputFile[] | null>(null);
 
   function readMovementReport(event: ChangeEvent<HTMLInputElement>) {
-    if (pwDownload) URL.revokeObjectURL(pwDownload);
-    setPWDownload(null);
-    if (plDownload) URL.revokeObjectURL(plDownload);
-    setPLDownload(null);
+    revokeOutputs(outputs);
+    setOutputs(null);
 
     const file = event.target.files?.[0];
     if (file) {
@@ -52,7 +94,7 @@ function App() {
     }
   }
 
-  function generatePars() {
+  async function generatePars() {
     if (movementReportContent === '') {
       setError(1);
       return;
@@ -77,24 +119,21 @@ function App() {
       weekQtyByCode.set(code, Math.round(weekQty));
     }
 
-    for (const row of pwRows.slice(1)) {
+    const pwEdits: CellEdit[] = [];
+    pwRows.forEach((row, i) => {
+      if (i < 1) return;
       const code = row[0]?.trim();
       if (code && weekQtyByCode.has(code)) {
         const weekQty = weekQtyByCode.get(code)!;
-        row[4] = String(weekQty);
+        pwEdits.push({ row: i, col: 4, value: weekQty });
         const avgPerDay = weekQty / 7;
-        row[6] = String(avgPerDay);
+        pwEdits.push({ row: i, col: 6, value: avgPerDay });
 
         const shelfLife = row[2]?.trim();
-        if (shelfLife) row[7] = String(Math.round(avgPerDay * Number(shelfLife)));
+        if (shelfLife) pwEdits.push({ row: i, col: 7, value: Math.round(avgPerDay * Number(shelfLife)) });
       }
-    }
-
-    const pwInst = Papa.unparse(pwRows);
-
-    if (pwDownload) URL.revokeObjectURL(pwDownload);
-    const pwBlob = new Blob([pwInst], { type: 'text/csv' });
-    setPWDownload(URL.createObjectURL(pwBlob));
+    });
+    applyEdits(pwRows, pwEdits);
 
     const approxParByCode = new Map<string, string>();
     for (const row of pwRows.slice(1)) {
@@ -103,23 +142,47 @@ function App() {
     }
 
     const plRows = parseCsv(prepListTemplate);
-    for (const row of plRows.slice(3)) {
+    const plEdits: CellEdit[] = [];
+    plRows.forEach((row, i) => {
+      if (i < 3) return;
       for (const [pluIndex, parIndex] of [[1, 3], [9, 11]] as const) {
         const code = row[pluIndex]?.trim();
         if (code && approxParByCode.has(code)) {
-          row[parIndex] = approxParByCode.get(code)!;
+          const approxPar = approxParByCode.get(code)!;
+          if (approxPar !== '') plEdits.push({ row: i, col: parIndex, value: Number(approxPar) });
         } else if (code && weekQtyByCode.has(code)) {
           // not on the par worksheet: using a one-week par in absence of shelf life value
-          row[parIndex] = String(weekQtyByCode.get(code));
+          plEdits.push({ row: i, col: parIndex, value: weekQtyByCode.get(code)! });
         }
       }
+    });
+    applyEdits(plRows, plEdits);
+
+    try {
+      const [pwXlsx, plXlsx] = await Promise.all([
+        buildXlsx(parWorksheetXlsxUrl, pwEdits),
+        buildXlsx(prepListXlsxUrl, plEdits),
+      ]);
+
+      revokeOutputs(outputs);
+      setOutputs([
+        {
+          label: 'Par Worksheet',
+          fileName: 'par-worksheet',
+          csvUrl: URL.createObjectURL(buildCsv(pwRows)),
+          xlsxUrl: URL.createObjectURL(pwXlsx),
+        },
+        {
+          label: 'Production Prep List',
+          fileName: 'production-prep-list',
+          csvUrl: URL.createObjectURL(buildCsv(plRows)),
+          xlsxUrl: URL.createObjectURL(plXlsx),
+        },
+      ]);
+    } catch (err) {
+      console.error(err);
+      setError(2);
     }
-
-    const plInst = Papa.unparse(plRows);
-
-    if (plDownload) URL.revokeObjectURL(plDownload);
-    const plBlob = new Blob([plInst], { type: 'text/csv' });
-    setPLDownload(URL.createObjectURL(plBlob));
   }
 
   return (
@@ -139,18 +202,24 @@ function App() {
       <section className="step">
         <h2>2. Generate</h2>
         <button className="button" onClick={generatePars}>Generate Pars</button>
-        {errorStatus !== 0 && <p className="error">No file inputted</p>}
+        {errorStatus === 1 && <p className="error">No file inputted</p>}
+        {errorStatus === 2 && <p className="error">Something went wrong generating the files</p>}
       </section>
 
       <section className="step">
         <h2>3. Download</h2>
-        {pwDownload ? (
-          <div className="downloads">
-            <a className="button" href={pwDownload} download="par-worksheet.csv">Download Par Worksheet</a>
-            {plDownload && (
-              <a className="button" href={plDownload} download="production-prep-list.csv">Download Production Prep List</a>
-            )}
-          </div>
+        {outputs ? (
+          <ul className="downloads">
+            {outputs.map(output => (
+              <li key={output.fileName} className="download-row">
+                <span className="download-label">{output.label}</span>
+                <span className="download-formats">
+                  <a className="button" href={output.xlsxUrl} download={`${output.fileName}.xlsx`}>.xlsx</a>
+                  <a className="button" href={output.csvUrl} download={`${output.fileName}.csv`}>.csv</a>
+                </span>
+              </li>
+            ))}
+          </ul>
         ) : (
           <p className="hint">Generate pars to download the worksheets.</p>
         )}
