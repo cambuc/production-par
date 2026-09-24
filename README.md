@@ -1,0 +1,6 @@
+A React web application built with typescript. Takes a movement report and outputs the filled par worksheet and production prep list from templates.
+
+## Future Plans
+- Weekday / Weekend par splits on prep list
+- Retrieving documents from backend rather than through uploaded files. User would set the date instead
+- **Demand Forecasting** pars based on historical sales data
