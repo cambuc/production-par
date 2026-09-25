@@ -1,16 +1,18 @@
 :root {
-  --bg: #f3f4f6;
+  --bg: #eef1f5;
   --surface: #ffffff;
-  --text: #1f2937;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
+  --text: #1c2533;
+  --muted: #5b6676;
+  --border: #d5dbe3;
+  --accent: #1f3a5f;
+  --accent-hover: #152a47;
+  --header-bg: #1f3a5f;
+  --header-text: #ffffff;
   --warning-bg: #fffbeb;
   --warning-text: #92400e;
   --error-text: #b91c1c;
 
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.5;
   color: var(--text);
 }

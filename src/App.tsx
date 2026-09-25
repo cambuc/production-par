@@ -42,6 +42,11 @@ function hasMovementHeaders(content: string): boolean {
   );
 }
 
+// Spreadsheet-style column name for a zero-based index (0 -> A, 12 -> M)
+function columnLetter(index: number): string {
+  return String.fromCharCode(65 + index);
+}
+
 function applyEdits(rows: string[][], edits: CellEdit[]) {
   for (const { row, col, value } of edits) rows[row][col] = String(value);
 }
@@ -76,6 +81,7 @@ function App() {
   const [movementReportContent, setMovementReport] = useState('');
   const [errorStatus, setError] = useState(0);
   const [headerWarning, setHeaderWarning] = useState(false);
+  const [showHeaderInfo, setShowHeaderInfo] = useState(false);
   const [outputs, setOutputs] = useState<OutputFile[] | null>(null);
 
   function readMovementReport(event: ChangeEvent<HTMLInputElement>) {
@@ -89,6 +95,7 @@ function App() {
         const content = reader.result as string;
         setMovementReport(content);
         setHeaderWarning(!hasMovementHeaders(content));
+        setShowHeaderInfo(false);
       };
       reader.readAsText(file);
     }
@@ -186,45 +193,81 @@ function App() {
   }
 
   return (
-    <main className="card">
-      <h1>Production Par</h1>
+    <>
+      <header className="app-header">
+        <h1>Production Par</h1>
+      </header>
+      <main className="card">
+        <section className="step">
+          <h2>1. Upload Movement Report</h2>
+          <label htmlFor="fileInput">
+            <input type="file" id="fileInput" accept=".csv" onChange={readMovementReport} />
+          </label>
+          {headerWarning && (
+            <div className="warning">
+              <p>This document doesn't appear to have the correct headers. Outputs may not generate correctly</p>
+              <button
+                type="button"
+                className="link-button"
+                aria-expanded={showHeaderInfo}
+                aria-controls="header-info"
+                onClick={() => setShowHeaderInfo(show => !show)}
+              >
+                {showHeaderInfo ? 'Less info' : 'More info'}
+              </button>
+              {showHeaderInfo && (
+                <div id="header-info" className="header-info">
+                  <p>The first row of the movement report should contain these headers:</p>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Column</th>
+                        <th>Header</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(MVT_HEADERS).map(([index, name]) => (
+                        <tr key={index}>
+                          <td>{columnLetter(Number(index))}</td>
+                          <td>{name}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p>Other columns can contain anything. Header names aren't case-sensitive.</p>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
 
-      <section className="step">
-        <h2>1. Upload Movement Report</h2>
-        <label htmlFor="fileInput">
-          <input type="file" id="fileInput" accept=".csv" onChange={readMovementReport} />
-        </label>
-        {headerWarning && (
-          <p className="warning">This document doesn't appear to have the correct headers. Outputs may not generate correctly</p>
-        )}
-      </section>
+        <section className="step">
+          <h2>2. Generate</h2>
+          <button className="button" onClick={generatePars}>Generate Pars</button>
+          {errorStatus === 1 && <p className="error">No file inputted</p>}
+          {errorStatus === 2 && <p className="error">Something went wrong generating the files</p>}
+        </section>
 
-      <section className="step">
-        <h2>2. Generate</h2>
-        <button className="button" onClick={generatePars}>Generate Pars</button>
-        {errorStatus === 1 && <p className="error">No file inputted</p>}
-        {errorStatus === 2 && <p className="error">Something went wrong generating the files</p>}
-      </section>
-
-      <section className="step">
-        <h2>3. Download</h2>
-        {outputs ? (
-          <ul className="downloads">
-            {outputs.map(output => (
-              <li key={output.fileName} className="download-row">
-                <span className="download-label">{output.label}</span>
-                <span className="download-formats">
-                  <a className="button" href={output.xlsxUrl} download={`${output.fileName}.xlsx`}>.xlsx</a>
-                  <a className="button" href={output.csvUrl} download={`${output.fileName}.csv`}>.csv</a>
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="hint">Generate pars to download the worksheets.</p>
-        )}
-      </section>
-    </main>
+        <section className="step">
+          <h2>3. Download</h2>
+          {outputs ? (
+            <ul className="downloads">
+              {outputs.map(output => (
+                <li key={output.fileName} className="download-row">
+                  <span className="download-label">{output.label}</span>
+                  <span className="download-formats">
+                    <a className="button" href={output.xlsxUrl} download={`${output.fileName}.xlsx`}>.xlsx</a>
+                    <a className="button" href={output.csvUrl} download={`${output.fileName}.csv`}>.csv</a>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="hint">Generate pars to download the worksheets.</p>
+          )}
+        </section>
+      </main>
+    </>
   )
 }
 
