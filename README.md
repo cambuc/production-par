@@ -2,6 +2,8 @@ A React web application built with typescript. Takes a movement report and outpu
 
 Deployed Here: https://production-par.camcarbuc.workers.dev/
 
+Created to aid operations in the back of house
+
 ## Future Plans
 - Weekday / Weekend par splits on prep list
 - Retrieving documents from backend rather than through uploaded files. User would set the date instead
