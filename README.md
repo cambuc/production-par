@@ -1,4 +1,6 @@
-A React web application built with typescript. Takes a movement report and outputs the filled par worksheet and production prep list from templates.
+A React web application built with typescript. Takes a movement report and outputs the filled par worksheet and production prep list from templates. 
+
+movement-report.csv under test-documents can be used to test the program as it's filled with random data
 
 Deployed Here: https://production-par.camcarbuc.workers.dev/
 
